@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import re
 import socket
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -26,6 +27,16 @@ def clean_config(text):
             continue
         out.append(line.rstrip())
     return "\n".join(out) + "\n"
+
+
+def use_ip(config, ip):
+    # 'remote hostname port' ko 'remote IP port' bana do (DNS block ho to bhi chale)
+    return re.sub(
+        r"(?m)^([ \t]*remote[ \t]+)\S+([ \t]+\d+)",
+        lambda m: m.group(1) + ip + m.group(2),
+        config,
+        count=1,
+    )
 
 
 def get_proto(text):
@@ -102,6 +113,15 @@ def main():
 
             host, port = get_remote(config)
 
+            ip = parts[1].strip()
+            is_ip = re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", ip) is not None
+
+            final_config = clean_config(config)
+
+            if is_ip:
+                host = ip
+                final_config = use_ip(final_config, ip)
+
             servers.append(
                 {
                     "hostName": parts[0],
@@ -110,7 +130,7 @@ def main():
                     "score": int(parts[2]),
                     "speedMbps": round(int(parts[4]) / 1_000_000),
                     "proto": proto,
-                    "config": clean_config(config),
+                    "config": final_config,
                     "_host": host,
                     "_port": port,
                 }
